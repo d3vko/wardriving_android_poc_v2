@@ -1,0 +1,31 @@
+---
+description: Anonimizar coordenadas y datos de ubicación en tests, fixtures y ejemplos
+alwaysApply: true
+---
+
+# Anonimizar geolocalización en tests y ejemplos
+
+Nunca uses coordenadas GPS reales (capturas, capturas de pantalla, logs o ubicaciones reconocibles) en tests, fixtures, docs de ejemplo o snippets.
+
+## Qué hacer
+
+- Usa coords **sintéticas** claramente falsas (p. ej. `1.2345678`, `-9.8765432`) o `0.0` / `null` según el caso.
+- Si el test verifica que se exportan coords válidas, usa valores inventados, no lat/lon de una sesión real.
+- Si el test verifica que la plataforma ignora muestras, usa `0.0000000` / GPS ausente / RF no factible.
+- No copies lat/lon de CSV de producción, capturas de pantalla ni issues.
+
+## Ejemplos
+
+```dart
+// ❌ BAD — coords reales / reconocibles
+latitude: 18.4326,
+longitude: -98.1332,
+
+// ✅ GOOD — sintéticas
+latitude: 1.2345678,
+longitude: -9.8765432,
+
+// ✅ GOOD — caso “no procesar”
+latitude: null,
+longitude: null, // export → 0.0000000
+```

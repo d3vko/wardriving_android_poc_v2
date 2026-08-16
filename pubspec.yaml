@@ -1,0 +1,77 @@
+name: wardriving_rf_village_mx
+description: Esqueleto Flutter Android-first para RF Village MX Wardriving v2 (stubs, sin escaneo real).
+publish_to: "none"
+version: 0.0.2+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Estado
+  flutter_riverpod: ^2.6.1
+
+  # Config / storage
+  flutter_dotenv: ^6.0.1
+  flutter_secure_storage: ^10.3.1
+  shared_preferences: ^2.5.3
+
+  # Red
+  dio: ^5.8.0+1
+
+  # DB (paridad Room)
+  drift: ^2.26.0
+  sqlite3_flutter_libs: ^0.6.0+eol
+  path: ^1.9.1
+  path_provider: ^2.1.5
+
+  # Permisos / ubicación / BLE / FGS
+  permission_handler: ^12.0.0+1
+  geolocator: ^14.0.0
+  flutter_blue_plus: ^2.3.10
+  flutter_foreground_task: ^9.2.2
+
+  # Mapa
+  maplibre_gl: ^0.26.2
+
+  # Export / share
+  share_plus: ^13.2.0
+  file_picker: ^12.0.0-beta.7
+  archive: ^4.0.7
+
+  # Routing
+  go_router: ^17.3.0
+  crypto: ^3.0.7
+  uuid: ^4.5.3
+  intl: ^0.20.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.26.0
+  build_runner: ^2.4.15
+  flutter_launcher_icons: ^0.14.3
+
+# Generar adaptive icons (v1 no los tenía):
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/brand/icon_app.png"
+  adaptive_icon_background: "#101820"
+  adaptive_icon_foreground: "assets/brand/icon_app.png"
+  min_sdk_android: 26
+
+flutter:
+  uses-material-design: true
+  assets:
+    # Solo .env.example (versionado). Copia a .env para overrides locales;
+    # si quieres empaquetar .env, descomenta la línea y quítalo de .gitignore.
+    - .env
+    #- .env.example
+    - assets/icons/nav/
+    - assets/brand/
