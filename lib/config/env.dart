@@ -12,7 +12,7 @@ class Env {
       'https://wardriving-ctf.rf-village-mx.com/wardriving/api/v1/';
 
   static const defaultSentryDsn =
-      'https://9d05a42f89684dc2b5bace58f65a36ed@error-handlers.rf-village-mx.com/3';
+      'https://9d05a42f89684dc2b5bace58f65a36ed@errors-handler.rf-village-mx.com/3';
 
   static String? _env(String key) {
     if (!dotenv.isInitialized) return null;
@@ -56,9 +56,9 @@ class Env {
 
   static String get sentryDsn => _env('SENTRY_DSN') ?? defaultSentryDsn;
 
-  static String get versionName => _env('APP_VERSION_NAME') ?? '0.0.2';
+  static String get versionName => _env('APP_VERSION_NAME') ?? '0.0.3';
 
-  static String get versionCode => _env('APP_VERSION_CODE') ?? '4';
+  static String get versionCode => _env('APP_VERSION_CODE') ?? '5';
 
   static String get releaseName =>
       'wardriving_rf_village_mx@$versionName+$versionCode';

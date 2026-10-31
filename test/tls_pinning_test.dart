@@ -4,7 +4,7 @@ import 'package:wardriving_rf_village_mx/core/security/tls_pinning.dart';
 void main() {
   test('pinnea solo hosts de rf-village-mx.com', () {
     expect(TlsPinning.isPinnedHost('wardriving-ctf.rf-village-mx.com'), isTrue);
-    expect(TlsPinning.isPinnedHost('error-handlers.rf-village-mx.com'), isTrue);
+    expect(TlsPinning.isPinnedHost('errors-handler.rf-village-mx.com'), isTrue);
     expect(TlsPinning.isPinnedHost('tiles.openfreemap.org'), isFalse);
   });
 

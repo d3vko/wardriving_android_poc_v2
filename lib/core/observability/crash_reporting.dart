@@ -4,7 +4,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../../config/env.dart';
 
-/// Claves que no deben salir hacia error-handlers (tokens, passwords, GPS).
+/// Claves que no deben salir hacia errors-handler (tokens, passwords, GPS).
 const _secretKeys = {
   'password',
   'password_confirm',

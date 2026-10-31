@@ -1,7 +1,7 @@
 name: wardriving_rf_village_mx
 description: Esqueleto Flutter Android-first para RF Village MX Wardriving v2 (stubs, sin escaneo real).
 publish_to: "none"
-version: 0.0.2+4
+version: 0.0.3+5
 
 environment:
   sdk: ^3.12.2
