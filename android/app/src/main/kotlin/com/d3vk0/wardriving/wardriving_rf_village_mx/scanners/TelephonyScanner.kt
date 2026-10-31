@@ -45,7 +45,7 @@ class TelephonyScanner(
         }.onFailure {
             latch.countDown()
         }
-        latch.await(3, TimeUnit.SECONDS)
+        latch.await(800, TimeUnit.MILLISECONDS)
         return result
     }
 }

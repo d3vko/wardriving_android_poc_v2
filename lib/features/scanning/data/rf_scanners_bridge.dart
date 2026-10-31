@@ -1,8 +1,18 @@
 import 'package:flutter/services.dart';
 
+/// Cadencia tipo Wigle Android: 1 s rápido / 2 s campo / 3 s quieto.
+class ScanCadence {
+  static const fastMillis = 1000;
+  static const fieldMillis = 2000;
+  static const stillMillis = 3000;
+  static const dedupeMillis = 1500;
+  static const fgsHeartbeatMillis = 2000;
+}
+
 /// Puentes nativos Wi‑Fi / LTE — docs/NATIVE_BRIDGES.md.
 class RfScannersBridge {
   static const channel = MethodChannel('com.d3vk0.wardriving/rf_scanners');
+  static const wifiEvents = EventChannel('com.d3vk0.wardriving/wifi_scans');
 
   Future<bool> wifiStartScan() async {
     final result = await channel.invokeMethod<bool>('wifi.startScan');
@@ -12,6 +22,22 @@ class RfScannersBridge {
   Future<List<Map<String, dynamic>>> wifiGetScanResults() async {
     final result = await channel.invokeMethod<List<dynamic>>('wifi.getScanResults');
     return _asMapList(result);
+  }
+
+  Future<void> wifiSetActive(bool active) {
+    return channel.invokeMethod<void>('wifi.setActive', active);
+  }
+
+  Future<bool> wifiIsThrottleEnabled() async {
+    final result = await channel.invokeMethod<bool>('wifi.isThrottleEnabled');
+    return result ?? false;
+  }
+
+  Stream<List<Map<String, dynamic>>> wifiScanResults() {
+    return wifiEvents.receiveBroadcastStream().map((event) {
+      if (event is List) return _asMapList(event);
+      return <Map<String, dynamic>>[];
+    });
   }
 
   Future<List<Map<String, dynamic>>> telephonyGetCellInfo() async {
@@ -30,9 +56,9 @@ class RfScannersBridge {
   }
 }
 
-/// Dedupe 20s — port de DuplicateFilter.kt
+/// Dedupe corto: evita el mismo BSSID en un burst, no una vuelta de manzana.
 class DuplicateFilter {
-  DuplicateFilter({this.windowMillis = 20000});
+  DuplicateFilter({this.windowMillis = ScanCadence.dedupeMillis});
 
   final int windowMillis;
   final Map<String, int> _lastSeen = {};

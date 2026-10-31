@@ -6,8 +6,22 @@ import 'package:wardriving_rf_village_mx/features/export/data/csv_formatters.dar
 import 'package:wardriving_rf_village_mx/features/export/data/export_repository.dart';
 import 'package:wardriving_rf_village_mx/features/scanning/data/rf_scanners_bridge.dart';
 import 'package:wardriving_rf_village_mx/core/db/database.dart';
+import 'package:wardriving_rf_village_mx/core/security/jwt_claims.dart';
 
 void main() {
+  group('JwtClaims', () {
+    test('lee username del payload', () {
+      const token =
+          'eyJhbGciOiJub25lIn0.eyJ1c2VybmFtZSI6ImQzdm51bGx2MDFkIn0.sig';
+      expect(JwtClaims.username(token), 'd3vnullv01d');
+    });
+
+    test('ignora token malformado', () {
+      expect(JwtClaims.username('no-es-jwt'), isNull);
+      expect(JwtClaims.username(''), isNull);
+    });
+  });
+
   group('DuplicateFilter', () {
     test('keeps first and drops within window', () {
       final filter = DuplicateFilter(windowMillis: 20000);

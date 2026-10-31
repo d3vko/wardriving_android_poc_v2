@@ -22,7 +22,7 @@ MAPLIBRE_STYLE_URL=https://demotiles.maplibre.org/style.json
 ''');
   });
 
-  testWidgets('App muestra Login sin JWT', (tester) async {
+  testWidgets('App muestra Live sin JWT', (tester) async {
     final prefs = await SharedPreferences.getInstance();
     final settings = AppSettingsStore(prefs);
     final tokens = AuthTokenStore();
@@ -59,6 +59,11 @@ MAPLIBRE_STYLE_URL=https://demotiles.maplibre.org/style.json
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('Pecera'), findsWidgets);
+    expect(find.text('Pecera del WiFi'), findsWidgets);
     expect(find.text('Login'), findsWidgets);
+    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('by d3v.k0'), findsWidgets);
+    expect(find.textContaining('BugCON 2026'), findsWidgets);
   });
 }

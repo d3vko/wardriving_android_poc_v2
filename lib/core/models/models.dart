@@ -45,7 +45,7 @@ class GeoLocation {
 
 class SessionSettings {
   const SessionSettings({
-    this.sampleIntervalMillis = 20000,
+    this.sampleIntervalMillis = 2000,
     this.wifiEnabled = true,
     this.bleEnabled = true,
     this.lteEnabled = true,
@@ -92,6 +92,8 @@ class LiveCounters {
     this.uploadStatus = 'Idle',
     this.sessionStatus = SessionStatus.stopped,
     this.sessionId,
+    this.scanHint = '',
+    this.wifiThrottled = false,
   });
 
   final int wifiCount;
@@ -101,6 +103,8 @@ class LiveCounters {
   final String uploadStatus;
   final SessionStatus sessionStatus;
   final String? sessionId;
+  final String scanHint;
+  final bool wifiThrottled;
 
   LiveCounters copyWith({
     int? wifiCount,
@@ -110,6 +114,8 @@ class LiveCounters {
     String? uploadStatus,
     SessionStatus? sessionStatus,
     String? sessionId,
+    String? scanHint,
+    bool? wifiThrottled,
   }) {
     return LiveCounters(
       wifiCount: wifiCount ?? this.wifiCount,
@@ -119,6 +125,8 @@ class LiveCounters {
       uploadStatus: uploadStatus ?? this.uploadStatus,
       sessionStatus: sessionStatus ?? this.sessionStatus,
       sessionId: sessionId ?? this.sessionId,
+      scanHint: scanHint ?? this.scanHint,
+      wifiThrottled: wifiThrottled ?? this.wifiThrottled,
     );
   }
 }

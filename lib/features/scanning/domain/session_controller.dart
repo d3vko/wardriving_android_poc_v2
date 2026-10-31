@@ -53,11 +53,17 @@ class SessionController extends StateNotifier<LiveCounters> {
   Timer? _loopTimer;
   StreamSubscription<Position>? _locationSub;
   StreamSubscription<LiveCounters>? _countersSub;
+  StreamSubscription<List<Map<String, dynamic>>>? _wifiResultsSub;
+  StreamSubscription<List<ScanResult>>? _bleResultsSub;
   GeoLocation? _latestLocation;
   bool _paused = false;
   String? _sessionId;
   int _sessionStartedAt = 0;
   bool _busy = false;
+  bool _lteBusy = false;
+  int _lastWifiRequestAt = 0;
+  int _lastNotifyAt = 0;
+  bool _fgsListening = false;
 
   /// Epoch ms before ~2000-01-01 — values below this are boot-time or garbage.
   static const int _minCredibleEpochMs = 946684800000;
@@ -66,6 +72,7 @@ class SessionController extends StateNotifier<LiveCounters> {
   AppSettingsStore get _settings => _ref.read(appSettingsStoreProvider);
 
   void _initForegroundTask() {
+    try {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'wardriving_collection',
@@ -80,16 +87,20 @@ class SessionController extends StateNotifier<LiveCounters> {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(20000),
+        eventAction: ForegroundTaskEventAction.repeat(ScanCadence.fgsHeartbeatMillis),
         autoRunOnBoot: false,
         autoRunOnMyPackageReplaced: false,
         allowWakeLock: true,
         allowWifiLock: true,
       ),
     );
+    } catch (_) {
+      // Tests / Android 16: no tumbar el primer frame.
+    }
   }
 
   Future<void> _restoreActive() async {
+    try {
     final active = await _repo.getActiveSession();
     if (active == null) return;
     _sessionId = active.id;
@@ -101,6 +112,7 @@ class SessionController extends StateNotifier<LiveCounters> {
           _paused ? SessionStatus.paused : SessionStatus.running,
     );
     _subscribeCounters(active.id);
+    } catch (_) {}
   }
 
   void _subscribeCounters(String sessionId) {
@@ -139,12 +151,16 @@ class SessionController extends StateNotifier<LiveCounters> {
 
       await _startForeground('Wardriving session active');
       await _startLocation(settings);
+      await _startRadios(settings);
       _startLoop(settings);
+      _listenFgsTicks();
 
       state = state.copyWith(
         sessionId: session.id,
         sessionStatus: SessionStatus.running,
         uploadStatus: 'Idle',
+        scanHint: _cadenceHint(settings),
+        wifiThrottled: false,
       );
     } finally {
       _busy = false;
@@ -157,7 +173,7 @@ class SessionController extends StateNotifier<LiveCounters> {
     _paused = true;
     await _repo.pauseSession(id);
     await FlutterForegroundTask.updateService(
-      notificationTitle: 'RF Village MX',
+      notificationTitle: 'Wardriving',
       notificationText: 'Wardriving session paused',
     );
     state = state.copyWith(sessionStatus: SessionStatus.paused);
@@ -169,7 +185,7 @@ class SessionController extends StateNotifier<LiveCounters> {
     _paused = false;
     await _repo.resumeSession(id);
     await FlutterForegroundTask.updateService(
-      notificationTitle: 'RF Village MX',
+      notificationTitle: 'Wardriving',
       notificationText: 'Wardriving session active',
     );
     state = state.copyWith(sessionStatus: SessionStatus.running);
@@ -185,6 +201,7 @@ class SessionController extends StateNotifier<LiveCounters> {
       _paused = false;
       _loopTimer?.cancel();
       _loopTimer = null;
+      await _stopRadios();
       await _locationSub?.cancel();
       _locationSub = null;
       await _countersSub?.cancel();
@@ -223,14 +240,14 @@ class SessionController extends StateNotifier<LiveCounters> {
     final running = await FlutterForegroundTask.isRunningService;
     if (running) {
       await FlutterForegroundTask.updateService(
-        notificationTitle: 'RF Village MX',
+        notificationTitle: 'Wardriving',
         notificationText: text,
       );
       return;
     }
     await FlutterForegroundTask.startService(
       serviceId: 33420,
-      notificationTitle: 'RF Village MX',
+      notificationTitle: 'Wardriving',
       notificationText: text,
       notificationIcon: const NotificationIcon(
         metaDataName: 'com.d3vk0.wardriving.NOTIFICATION_ICON',
@@ -245,10 +262,10 @@ class SessionController extends StateNotifier<LiveCounters> {
     if (!enabled) return;
 
     _locationSub = Geolocator.getPositionStream(
-      locationSettings: LocationSettings(
+      locationSettings: AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 0,
-        timeLimit: Duration(milliseconds: settings.sampleIntervalMillis * 2),
+        intervalDuration: const Duration(seconds: 1),
       ),
     ).listen((pos) async {
       final geo = GeoLocation(
@@ -265,132 +282,150 @@ class SessionController extends StateNotifier<LiveCounters> {
       if (id != null) {
         await _repo.insertLocation(id, geo);
       }
+      if (!_paused) {
+        state = state.copyWith(gpsStatus: 'Fix ${pos.accuracy.toStringAsFixed(0)} m');
+      }
     });
   }
 
   void _startLoop(SessionSettings settings) {
     _loopTimer?.cancel();
-    Future<void> tick() async {
-      if (_paused || _sessionId == null) return;
-      await _collectOnce(_sessionId!, settings);
-    }
-
-    // First sample soon, then interval
-    tick();
+    _tickRadios(settings);
     _loopTimer = Timer.periodic(
       Duration(milliseconds: settings.sampleIntervalMillis),
-      (_) => tick(),
+      (_) => _tickRadios(settings),
     );
   }
 
-  Future<void> _collectOnce(String sessionId, SessionSettings settings) async {
-    final location = _latestLocation;
+  void _listenFgsTicks() {
+    if (_fgsListening) return;
+    FlutterForegroundTask.addTaskDataCallback(_onFgsTick);
+    _fgsListening = true;
+  }
+
+  void _onFgsTick(Object data) {
+    if (_paused || _sessionId == null) return;
+    _tickRadios(_settings.readSettings());
+  }
+
+  void _tickRadios(SessionSettings settings) {
+    if (_paused || _sessionId == null) return;
+    if (settings.wifiEnabled) {
+      unawaited(_requestWifiScan());
+    }
+    if (settings.lteEnabled) {
+      unawaited(_pollLte(_sessionId!));
+    }
+    unawaited(_refreshNotification());
+  }
+
+  Future<void> _startRadios(SessionSettings settings) async {
+    await _stopRadios();
     if (settings.wifiEnabled) {
       try {
-        await _bridge.wifiStartScan();
-        await Future<void>.delayed(const Duration(milliseconds: 800));
-        final results = await _bridge.wifiGetScanResults();
-        final now = DateTime.now().millisecondsSinceEpoch;
-        final samples = <WifiBleSamplesCompanion>[];
-        for (final r in results) {
-          final mac = (r['bssid'] as String?) ?? '';
-          if (mac.isEmpty) continue;
-          if (!_dedupe.shouldKeep('wifi:$mac', now)) continue;
-          final freq = (r['frequency'] as num?)?.toInt() ?? 0;
-          samples.add(
-            WifiBleSamplesCompanion.insert(
-              sessionId: sessionId,
-              timestamp: now,
-              type: 'WIFI',
-              mac: mac,
-              ssid: (r['ssid'] as String?) ?? '',
-              authMode: (r['capabilities'] as String?) ?? '',
-              channel: frequencyToChannel(freq).toString(),
-              rssi: Value((r['level'] as num?)?.toInt()),
-              latitude: Value(location?.latitude),
-              longitude: Value(location?.longitude),
-              altitudeMeters: Value(location?.altitudeMeters),
-              accuracyMeters: Value(location?.accuracyMeters),
-              rawPayload: Value('frequency=$freq'),
-            ),
-          );
-        }
-        if (samples.isNotEmpty) await _repo.insertWifiBle(samples);
+        await _bridge.wifiSetActive(true);
+        final throttled = await _bridge.wifiIsThrottleEnabled();
+        state = state.copyWith(wifiThrottled: throttled);
+        _wifiResultsSub = _bridge.wifiScanResults().listen(_ingestWifi);
       } catch (_) {}
     }
-
     if (settings.bleEnabled) {
-      try {
-        final samples = await _scanBle(sessionId, location);
-        if (samples.isNotEmpty) await _repo.insertWifiBle(samples);
-      } catch (_) {}
+      await _startBleContinuous();
     }
-
-    if (settings.lteEnabled) {
-      try {
-        final results = await _bridge.telephonyGetCellInfo();
-        final samples = <LteSamplesCompanion>[];
-        for (final r in results) {
-          final rawTs = (r['timestamp'] as num?)?.toInt();
-          final now = _sanitizeLteTimestamp(rawTs);
-          final mcc = r['mcc'] as String?;
-          final mnc = r['mnc'] as String?;
-          final lac = (r['lac'] as num?)?.toInt();
-          final cellId = (r['cellId'] as num?)?.toInt();
-          if (!_dedupe.shouldKeep('lte:$mcc:$mnc:$lac:$cellId', now)) {
-            continue;
-          }
-          samples.add(
-            LteSamplesCompanion.insert(
-              sessionId: sessionId,
-              timestamp: now,
-              technology: (r['technology'] as String?) ?? 'LTE',
-              state: (r['state'] as String?) ?? '',
-              mcc: Value(mcc),
-              mnc: Value(mnc),
-              lac: Value(lac),
-              cellId: Value(cellId),
-              pci: Value((r['pci'] as num?)?.toInt()),
-              earfcn: Value((r['earfcn'] as num?)?.toInt()),
-              band: Value(r['band'] as String?),
-              rssi: Value((r['rssi'] as num?)?.toInt()),
-              rsrp: Value((r['rsrp'] as num?)?.toInt()),
-              rsrq: Value((r['rsrq'] as num?)?.toInt()),
-              sinr: Value((r['sinr'] as num?)?.toInt()),
-              operatorName: Value(r['operator'] as String?),
-              longitude: Value(location?.longitude),
-              latitude: Value(location?.latitude),
-              rawPayload: Value(r['rawPayload'] as String?),
-            ),
-          );
-        }
-        if (samples.isNotEmpty) await _repo.insertLte(samples);
-      } catch (_) {}
-    }
-
-    await FlutterForegroundTask.updateService(
-      notificationTitle: 'RF Village MX',
-      notificationText:
-          'Wi‑Fi ${state.wifiCount} · BLE ${state.bleCount} · LTE ${state.lteCount}',
-    );
   }
 
-  Future<List<WifiBleSamplesCompanion>> _scanBle(
-    String sessionId,
-    GeoLocation? location,
-  ) async {
-    if (await FlutterBluePlus.isSupported == false) return [];
-    final adapterOn = await FlutterBluePlus.adapterState.first
-        .timeout(const Duration(seconds: 2), onTimeout: () => BluetoothAdapterState.off);
-    if (adapterOn != BluetoothAdapterState.on) return [];
+  Future<void> _stopRadios() async {
+    await _wifiResultsSub?.cancel();
+    _wifiResultsSub = null;
+    await _bleResultsSub?.cancel();
+    _bleResultsSub = null;
+    try {
+      if (FlutterBluePlus.isScanningNow) {
+        await FlutterBluePlus.stopScan();
+      }
+    } catch (_) {}
+    try {
+      await _bridge.wifiSetActive(false);
+    } catch (_) {}
+    if (_fgsListening) {
+      FlutterForegroundTask.removeTaskDataCallback(_onFgsTick);
+      _fgsListening = false;
+    }
+  }
 
+  Future<void> _requestWifiScan() async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final found = <String, WifiBleSamplesCompanion>{};
-    final sub = FlutterBluePlus.onScanResults.listen((results) {
-      for (final r in results) {
-        final mac = r.device.remoteId.str;
-        if (!_dedupe.shouldKeep('ble:$mac', now)) continue;
-        found[mac] = WifiBleSamplesCompanion.insert(
+    if (now - _lastWifiRequestAt < 400) return;
+    _lastWifiRequestAt = now;
+    try {
+      final ok = await _bridge.wifiStartScan();
+      if (!ok && !state.wifiThrottled) {
+        state = state.copyWith(wifiThrottled: true);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _ingestWifi(List<Map<String, dynamic>> results) async {
+    final sessionId = _sessionId;
+    if (sessionId == null || _paused) return;
+    final location = _latestLocation;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final samples = <WifiBleSamplesCompanion>[];
+    for (final r in results) {
+      final mac = (r['bssid'] as String?) ?? '';
+      if (mac.isEmpty) continue;
+      if (!_dedupe.shouldKeep('wifi:$mac', now)) continue;
+      final freq = (r['frequency'] as num?)?.toInt() ?? 0;
+      samples.add(
+        WifiBleSamplesCompanion.insert(
+          sessionId: sessionId,
+          timestamp: now,
+          type: 'WIFI',
+          mac: mac,
+          ssid: (r['ssid'] as String?) ?? '',
+          authMode: (r['capabilities'] as String?) ?? '',
+          channel: frequencyToChannel(freq).toString(),
+          rssi: Value((r['level'] as num?)?.toInt()),
+          latitude: Value(location?.latitude),
+          longitude: Value(location?.longitude),
+          altitudeMeters: Value(location?.altitudeMeters),
+          accuracyMeters: Value(location?.accuracyMeters),
+          rawPayload: Value('frequency=$freq'),
+        ),
+      );
+    }
+    if (samples.isNotEmpty) await _repo.insertWifiBle(samples);
+  }
+
+  Future<void> _startBleContinuous() async {
+    if (await FlutterBluePlus.isSupported == false) return;
+    final adapterOn = await FlutterBluePlus.adapterState.first.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => BluetoothAdapterState.off,
+    );
+    if (adapterOn != BluetoothAdapterState.on) return;
+
+    _bleResultsSub = FlutterBluePlus.onScanResults.listen(_ingestBle);
+    try {
+      await FlutterBluePlus.startScan(
+        continuousUpdates: true,
+        androidScanMode: AndroidScanMode.lowLatency,
+        androidUsesFineLocation: true,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _ingestBle(List<ScanResult> results) async {
+    final sessionId = _sessionId;
+    if (sessionId == null || _paused) return;
+    final location = _latestLocation;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final samples = <WifiBleSamplesCompanion>[];
+    for (final r in results) {
+      final mac = r.device.remoteId.str;
+      if (!_dedupe.shouldKeep('ble:$mac', now)) continue;
+      samples.add(
+        WifiBleSamplesCompanion.insert(
           sessionId: sessionId,
           timestamp: now,
           type: 'BLE',
@@ -403,21 +438,76 @@ class SessionController extends StateNotifier<LiveCounters> {
           longitude: Value(location?.longitude),
           altitudeMeters: Value(location?.altitudeMeters),
           accuracyMeters: Value(location?.accuracyMeters),
+        ),
+      );
+    }
+    if (samples.isNotEmpty) await _repo.insertWifiBle(samples);
+  }
+
+  Future<void> _pollLte(String sessionId) async {
+    if (_lteBusy) return;
+    _lteBusy = true;
+    try {
+      final location = _latestLocation;
+      final results = await _bridge.telephonyGetCellInfo();
+      final samples = <LteSamplesCompanion>[];
+      for (final r in results) {
+        final rawTs = (r['timestamp'] as num?)?.toInt();
+        final now = _sanitizeLteTimestamp(rawTs);
+        final mcc = r['mcc'] as String?;
+        final mnc = r['mnc'] as String?;
+        final lac = (r['lac'] as num?)?.toInt();
+        final cellId = (r['cellId'] as num?)?.toInt();
+        if (!_dedupe.shouldKeep('lte:$mcc:$mnc:$lac:$cellId', now)) {
+          continue;
+        }
+        samples.add(
+          LteSamplesCompanion.insert(
+            sessionId: sessionId,
+            timestamp: now,
+            technology: (r['technology'] as String?) ?? 'LTE',
+            state: (r['state'] as String?) ?? '',
+            mcc: Value(mcc),
+            mnc: Value(mnc),
+            lac: Value(lac),
+            cellId: Value(cellId),
+            pci: Value((r['pci'] as num?)?.toInt()),
+            earfcn: Value((r['earfcn'] as num?)?.toInt()),
+            band: Value(r['band'] as String?),
+            rssi: Value((r['rssi'] as num?)?.toInt()),
+            rsrp: Value((r['rsrp'] as num?)?.toInt()),
+            rsrq: Value((r['rsrq'] as num?)?.toInt()),
+            sinr: Value((r['sinr'] as num?)?.toInt()),
+            operatorName: Value(r['operator'] as String?),
+            longitude: Value(location?.longitude),
+            latitude: Value(location?.latitude),
+            rawPayload: Value(r['rawPayload'] as String?),
+          ),
         );
       }
-    });
-
-    try {
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 5),
-        androidUsesFineLocation: true,
-      );
-      await Future<void>.delayed(const Duration(seconds: 5));
+      if (samples.isNotEmpty) await _repo.insertLte(samples);
+    } catch (_) {
     } finally {
-      await FlutterBluePlus.stopScan();
-      await sub.cancel();
+      _lteBusy = false;
     }
-    return found.values.toList();
+  }
+
+  Future<void> _refreshNotification() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastNotifyAt < ScanCadence.fgsHeartbeatMillis) return;
+    _lastNotifyAt = now;
+    await FlutterForegroundTask.updateService(
+      notificationTitle: 'Wardriving',
+      notificationText:
+          'Wi‑Fi ${state.wifiCount} · BLE ${state.bleCount} · LTE ${state.lteCount}',
+    );
+  }
+
+  String _cadenceHint(SessionSettings settings) {
+    final seconds = (settings.sampleIntervalMillis / 1000).toStringAsFixed(
+      settings.sampleIntervalMillis % 1000 == 0 ? 0 : 1,
+    );
+    return 'Wi‑Fi cada ${seconds}s · BLE continuo · LTE en paralelo';
   }
 
   int _sanitizeLteTimestamp(int? rawTs) {
@@ -431,6 +521,7 @@ class SessionController extends StateNotifier<LiveCounters> {
   @override
   void dispose() {
     _loopTimer?.cancel();
+    unawaited(_stopRadios());
     _locationSub?.cancel();
     _countersSub?.cancel();
     super.dispose();

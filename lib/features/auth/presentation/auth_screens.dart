@@ -38,7 +38,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!mounted) return;
       final authed = ref.read(authStateProvider).valueOrNull == true;
       if (authed) {
-        context.go('/live');
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/live');
+        }
       } else {
         final err = ref.read(authStateProvider).error;
         setState(() => _error = err != null ? apiErrorMessage(err) : 'Login fallido');
@@ -146,7 +150,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           );
       if (!mounted) return;
       if (ref.read(authStateProvider).valueOrNull == true) {
-        context.go('/live');
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/live');
+        }
       } else {
         final err = ref.read(authStateProvider).error;
         setState(() => _error = err != null ? apiErrorMessage(err) : 'Registro fallido');

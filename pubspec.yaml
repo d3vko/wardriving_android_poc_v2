@@ -1,7 +1,7 @@
 name: wardriving_rf_village_mx
 description: Esqueleto Flutter Android-first para RF Village MX Wardriving v2 (stubs, sin escaneo real).
 publish_to: "none"
-version: 0.0.2+1
+version: 0.0.2+4
 
 environment:
   sdk: ^3.12.2
@@ -22,6 +22,7 @@ dependencies:
 
   # Red
   dio: ^5.8.0+1
+  sentry_flutter: ^10.2.0
 
   # DB (paridad Room)
   drift: ^2.26.0
@@ -62,8 +63,8 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   image_path: "assets/brand/icon_app.png"
-  adaptive_icon_background: "#101820"
-  adaptive_icon_foreground: "assets/brand/icon_app.png"
+  adaptive_icon_background: "#090B08"
+  adaptive_icon_foreground: "assets/brand/icon_app_fg.png"
   min_sdk_android: 26
 
 flutter:

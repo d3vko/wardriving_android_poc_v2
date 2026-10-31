@@ -17,6 +17,12 @@ final authStateProvider =
   return AuthStateNotifier(ref.watch(authRepositoryProvider));
 });
 
+final usernameProvider = FutureProvider<String?>((ref) async {
+  final authed = ref.watch(authStateProvider).valueOrNull == true;
+  if (!authed) return null;
+  return ref.read(authTokenStoreProvider).readUsername();
+});
+
 class AuthRepository {
   AuthRepository({
     required this.api,
@@ -36,7 +42,7 @@ class AuthRepository {
     if (token == null || token.isEmpty) {
       throw StateError('Login response did not contain an access token');
     }
-    await tokenStore.saveToken(token);
+    await tokenStore.saveSession(token: token, username: response.username);
     await settingsStore.enableUploadByDefaultForAuthenticatedUser();
     return token;
   }
@@ -57,13 +63,22 @@ class AuthRepository {
     if (token == null || token.isEmpty) {
       throw StateError('Register response did not contain an access token');
     }
-    await tokenStore.saveToken(token);
+    await tokenStore.saveSession(token: token, username: response.username);
     await settingsStore.enableUploadByDefaultForAuthenticatedUser();
     return token;
   }
 
   Future<void> recoverPassword(String identifier) =>
       api.recoverPassword(identifier);
+
+  Future<void> importJwt(String token) async {
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) {
+      throw StateError('JWT vacío');
+    }
+    await tokenStore.saveSession(token: trimmed);
+    await settingsStore.enableUploadByDefaultForAuthenticatedUser();
+  }
 
   Future<void> logout() => tokenStore.clear();
 }
@@ -105,6 +120,14 @@ class AuthStateNotifier extends StateNotifier<AsyncValue<bool>> {
         password: password,
         passwordConfirm: passwordConfirm,
       );
+      return true;
+    });
+  }
+
+  Future<void> importJwt(String token) async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      await _repo.importJwt(token);
       return true;
     });
   }

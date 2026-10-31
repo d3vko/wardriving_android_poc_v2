@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Sin CAs de usuario: bloquea Burp/Charles con certificado instalado a mano. -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config>
+        <domain includeSubdomains="true">rf-village-mx.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+        <pin-set>
+            <!-- hoja *.rf-village-mx.com -->
+            <pin digest="SHA-256">VUwGnQVqxR8x/NGJqYOufLnpjwBR3B6RCI2AsBduMXQ=</pin>
+            <!-- Let's Encrypt YE1 (sobrevive rotación de hoja) -->
+            <pin digest="SHA-256">brzvtCELCIZUo4sD/qPX0ccRtPsd3DY6RfmxpOU9oB4=</pin>
+            <!-- ISRG Root X2 backup -->
+            <pin digest="SHA-256">diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>

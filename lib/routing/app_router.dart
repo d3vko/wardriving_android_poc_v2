@@ -10,25 +10,10 @@ import '../features/live/presentation/live_screen.dart';
 import '../features/sessions/presentation/sessions_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 
+/// Un solo GoRouter. El escaneo no exige JWT; login es opcional.
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(authStateProvider);
-
   return GoRouter(
     initialLocation: '/live',
-    refreshListenable: _AuthRefresh(ref),
-    redirect: (context, state) {
-      final loggingIn = state.matchedLocation == '/login' ||
-          state.matchedLocation == '/register' ||
-          state.matchedLocation == '/password-recovery';
-
-      final authed = auth.valueOrNull == true;
-      final loading = auth.isLoading;
-
-      if (loading) return null;
-      if (!authed && !loggingIn) return '/login';
-      if (authed && loggingIn) return '/live';
-      return null;
-    },
     routes: [
       GoRoute(
         path: '/login',
@@ -93,60 +78,65 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class _AuthRefresh extends ChangeNotifier {
-  _AuthRefresh(this._ref) {
-    _ref.listen(authStateProvider, (_, _) => notifyListeners());
-  }
-
-  final Ref _ref;
-}
-
-class FieldShell extends StatelessWidget {
+class FieldShell extends ConsumerWidget {
   const FieldShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   static const _destinations = [
-    (icon: Icons.sensors, label: 'Live', asset: 'assets/icons/nav/live.png'),
-    (
-      icon: Icons.map,
-      label: 'Dashboard',
-      asset: 'assets/icons/nav/dashboard.png',
-    ),
-    (
-      icon: Icons.history,
-      label: 'Sessions',
-      asset: 'assets/icons/nav/sessions.png',
-    ),
-    (
-      icon: Icons.ios_share,
-      label: 'Export',
-      asset: 'assets/icons/nav/export.png',
-    ),
-    (
-      icon: Icons.settings,
-      label: 'Settings',
-      asset: 'assets/icons/nav/settings.png',
-    ),
+    (label: 'Pecera', asset: 'assets/icons/nav/live.png'),
+    (label: 'Dashboard', asset: 'assets/icons/nav/dashboard.png'),
+    (label: 'Sessions', asset: 'assets/icons/nav/sessions.png'),
+    (label: 'Export', asset: 'assets/icons/nav/export.png'),
+    (label: 'Settings', asset: 'assets/icons/nav/settings.png'),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authed = ref.watch(authStateProvider).valueOrNull == true;
+
     return Scaffold(
-      body: navigationShell,
+      body: Column(
+        children: [
+          if (!authed)
+            Material(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.cloud_off),
+                title: const Text('Escaneo local. Inicia sesión para subir.'),
+                trailing: TextButton(
+                  onPressed: () => context.push('/login'),
+                  child: const Text('Login'),
+                ),
+              ),
+            ),
+          Expanded(child: navigationShell),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: navigationShell.goBranch,
         destinations: [
           for (final d in _destinations)
             NavigationDestination(
-              icon: Image.asset(
+              icon: Opacity(
+                opacity: 0.62,
+                child: Image.asset(
+                  d.asset,
+                  width: 24,
+                  height: 24,
+                  filterQuality: FilterQuality.medium,
+                  semanticLabel: d.label,
+                ),
+              ),
+              selectedIcon: Image.asset(
                 d.asset,
                 width: 24,
                 height: 24,
-                errorBuilder: (_, _, _) => Icon(d.icon),
+                filterQuality: FilterQuality.medium,
+                semanticLabel: d.label,
               ),
-              selectedIcon: Icon(d.icon),
               label: d.label,
             ),
         ],

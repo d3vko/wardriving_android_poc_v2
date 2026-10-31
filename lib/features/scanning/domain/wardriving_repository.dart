@@ -19,6 +19,8 @@ class WardrivingRepository {
 
   Stream<List<WardrivingSession>> observeSessions() => _db.observeSessions();
 
+  Future<List<WardrivingSession>> listSessions() => _db.getAllSessions();
+
   Future<WardrivingSession?> getActiveSession() => _db.getActiveSession();
 
   Future<WardrivingSession?> getSession(String id) => _db.getSession(id);

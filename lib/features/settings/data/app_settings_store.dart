@@ -36,7 +36,7 @@ class AppSettingsStore {
 
   SessionSettings readSettings() {
     return SessionSettings(
-      sampleIntervalMillis: _prefs.getInt(_interval) ?? 20000,
+      sampleIntervalMillis: _intervalFromPrefs(),
       wifiEnabled: _prefs.getBool(_wifi) ?? true,
       bleEnabled: _prefs.getBool(_ble) ?? true,
       lteEnabled: _prefs.getBool(_lte) ?? true,
@@ -77,6 +77,13 @@ class AppSettingsStore {
 
   Future<void> saveSessionFilter(SessionFilter filter) async {
     await _prefs.setString(_sessionFilter, filter.name);
+  }
+
+  int _intervalFromPrefs() {
+    final raw = _prefs.getInt(_interval);
+    if (raw == null || raw >= 10000) return 2000;
+    if (raw < 1000) return 1000;
+    return raw;
   }
 }
 

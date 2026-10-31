@@ -15,7 +15,7 @@ class WardrivingApp extends ConsumerWidget {
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(
-      title: 'RF Village MX Wardriving',
+      title: 'Wardriving',
       theme: AppTheme.light(accent),
       darkTheme: AppTheme.dark(accent),
       routerConfig: router,

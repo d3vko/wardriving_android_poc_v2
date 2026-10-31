@@ -2,11 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/env.dart';
 import '../models/models.dart';
+import '../observability/crash_reporting.dart';
 import '../security/auth_token_store.dart';
+import '../security/tls_pinning.dart';
 
 final authTokenStoreProvider = Provider<AuthTokenStore>((ref) => AuthTokenStore());
 
@@ -84,6 +87,9 @@ class ApiClient {
                 headers: {'Content-Type': 'application/json'},
               ),
             ) {
+    if (dio == null) {
+      _hardenTls(this.dio);
+    }
     this.dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -98,6 +104,7 @@ class ApiClient {
           if (code == 401 || code == 403) {
             await tokenStore.clear();
           }
+          CrashReporting.recordHttpError(error);
           handler.next(error);
         },
       ),
@@ -107,6 +114,21 @@ class ApiClient {
   final ApiConfig config;
   final AuthTokenStore tokenStore;
   final Dio dio;
+
+  static void _hardenTls(Dio dio) {
+    dio.httpClientAdapter = IOHttpClientAdapter(
+      createHttpClient: () {
+        final client = HttpClient();
+        client.findProxy = (_) => 'DIRECT';
+        client.badCertificateCallback = (cert, host, port) => false;
+        return client;
+      },
+      validateCertificate: (cert, host, port) {
+        if (cert == null) return false;
+        return TlsPinning.allows(host: host, der: cert.der);
+      },
+    );
+  }
 
   Future<AuthResponse> login(String identifier, String password) async {
     final body = <String, dynamic>{

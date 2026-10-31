@@ -64,8 +64,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               error: (e, _) => Text('$e'),
               data: (sessions) {
                 return DropdownButtonFormField<String>(
-                  // ignore: deprecated_member_use
-                  value: _selectedSessionId,
+                  initialValue: _selectedSessionId,
                   decoration: const InputDecoration(
                     labelText: 'Sesión',
                     border: OutlineInputBorder(),
