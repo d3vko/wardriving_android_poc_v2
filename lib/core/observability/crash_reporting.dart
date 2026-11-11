@@ -115,6 +115,21 @@ Breadcrumb? scrubBreadcrumb(Breadcrumb? breadcrumb, Hint hint) {
 class CrashReporting {
   CrashReporting._();
 
+  /// Rutas de auth cuyo 4xx es flujo de producto (credenciales, validación),
+  /// no un fallo del sistema. Deben quedar breadcrumb pero no exception.
+  static const _authPathMarkers = ['auth/login', 'auth/register', 'auth/password'];
+
+  /// Decide si un error HTTP merece captureException en GlitchTip.
+  /// 401/403 siempre son flujo de auth; 4xx en rutas auth también.
+  @visibleForTesting
+  static bool shouldCaptureHttpError(String path, int? statusCode) {
+    if (statusCode == null) return true;
+    if (statusCode == 401 || statusCode == 403) return false;
+    final isAuthPath = _authPathMarkers.any(path.contains);
+    if (isAuthPath && statusCode >= 400 && statusCode < 500) return false;
+    return true;
+  }
+
   static void configureOptions(SentryFlutterOptions options) {
     options.dsn = Env.sentryDsn;
     options.environment = kReleaseMode ? 'production' : 'debug';
@@ -156,8 +171,8 @@ class CrashReporting {
         reason: error.type.name,
       ),
     );
-    // 401/403 son flujo de auth, no crash.
-    if (status == 401 || status == 403) return;
+    // 401/403 y 4xx de auth son flujo de producto, no crash.
+    if (!shouldCaptureHttpError(path, status)) return;
     Sentry.captureException(
       error,
       stackTrace: error.stackTrace,

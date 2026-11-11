@@ -207,8 +207,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       final results = await uploadRepo.uploadSessionPending(widget.sessionId);
       final ok = results.whereType<UploadSuccess>().length;
       final fail = results.whereType<UploadFailure>().length;
+      if (!mounted) return;
       setState(() => _status = 'OK: $ok · Error: $fail');
     } catch (e) {
+      if (!mounted) return;
       setState(() => _status = '$e');
     } finally {
       if (mounted) setState(() => _busy = false);

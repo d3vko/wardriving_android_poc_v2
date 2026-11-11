@@ -57,4 +57,24 @@ void main() {
     expect(scrubbed.breadcrumbs?.single.data?['lat'], '[redacted]');
     expect(scrubbed.breadcrumbs?.single.data?['path'], '/live');
   });
+
+  group('shouldCaptureHttpError', () {
+    test('no captura 401/403 en cualquier ruta', () {
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/files-uploaded/', 401), isFalse);
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/files-uploaded/', 403), isFalse);
+    });
+
+    test('no captura 4xx en rutas de auth (flujo de producto)', () {
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/auth/login/', 400), isFalse);
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/auth/login/', 422), isFalse);
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/auth/register/', 400), isFalse);
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/auth/password/reset/', 400), isFalse);
+    });
+
+    test('sí captura 4xx fuera de auth y 5xx siempre', () {
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/files-uploaded/', 400), isTrue);
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/auth/login/', 500), isTrue);
+      expect(CrashReporting.shouldCaptureHttpError('/wardriving/api/v1/auth/login/', null), isTrue);
+    });
+  });
 }

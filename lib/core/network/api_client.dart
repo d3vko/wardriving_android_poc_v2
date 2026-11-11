@@ -132,8 +132,8 @@ class ApiClient {
 
   Future<AuthResponse> login(String identifier, String password) async {
     final body = <String, dynamic>{
+      'username': identifier,
       'password': password,
-      if (identifier.contains('@')) 'email': identifier else 'username': identifier,
     };
     final response = await dio.post<Map<String, dynamic>>(
       config.loginPath,
